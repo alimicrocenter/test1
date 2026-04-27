@@ -1,0 +1,78 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() { return request.auth != null; }
+    function getUserData() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function hasRole(role) { return isSignedIn() && getUserData().role == role; }
+    function isAdmin() { return hasRole('ADMIN'); }
+    function isManager() { return hasRole('MANAGER') || isAdmin(); }
+    function isTechnician() { return hasRole('TECHNICIAN') || isManager(); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+
+    // --- Validation Helpers ---
+    function isValidUser(data) {
+      return data.uid == request.auth.uid &&
+             data.email is string && data.email.size() <= 256 &&
+             data.displayName is string && data.displayName.size() <= 128 &&
+             data.role in ['ADMIN', 'MANAGER', 'TECHNICIAN', 'OWNER'];
+    }
+
+    function isValidVehicle(data) {
+      return data.ownerId is string &&
+             data.make is string && data.make.size() <= 100 &&
+             data.model is string && data.model.size() <= 100 &&
+             data.year is number && data.year >= 1900 && data.year <= 2100 &&
+             data.currentMileage is number && data.currentMileage >= 0;
+    }
+
+    function isValidServiceRecord(data) {
+      return data.vehicleId is string &&
+             data.cost is number && data.cost >= 0 &&
+             data.mileage is number && data.mileage >= 0 &&
+             data.type in ['MAINTENANCE', 'REPAIR', 'UPGRADE'];
+    }
+
+    // --- Collection Rules ---
+
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && userId == request.auth.uid && isValidUser(incoming()) && incoming().role == 'OWNER'; // Default role
+      allow update: if isSignedIn() && userId == request.auth.uid && isValidUser(incoming()) && 
+                    incoming().role == existing().role; // Cannot change own role
+      allow update: if isAdmin(); // Admin can change roles
+    }
+
+    match /vehicles/{vehicleId} {
+      allow read: if isSignedIn(); // Broad read for technical visibility, or filter by ownerId in query
+      allow create: if isSignedIn() && isValidVehicle(incoming()) && (isManager() || incoming().ownerId == request.auth.uid);
+      allow update: if isSignedIn() && isValidVehicle(incoming()) && (isManager() || existing().ownerId == request.auth.uid);
+      allow delete: if isAdmin() || (existing().ownerId == request.auth.uid);
+
+      match /serviceRecords/{recordId} {
+        allow read: if isSignedIn();
+        allow create: if isTechnician() && isValidServiceRecord(incoming());
+        allow update: if isTechnician() && isValidServiceRecord(incoming());
+        allow delete: if isAdmin();
+      }
+
+      match /reminders/{reminderId} {
+        allow read: if isSignedIn();
+        allow write: if isSignedIn() && (isManager() || get(/databases/$(database)/documents/vehicles/$(vehicleId)).data.ownerId == request.auth.uid);
+      }
+    }
+
+    match /inventory/{partId} {
+      allow read: if isSignedIn();
+      allow write: if isManager();
+      allow update: if isTechnician() && incoming().diff(existing()).affectedKeys().hasOnly(['quantity']); 
+    }
+  }
+}

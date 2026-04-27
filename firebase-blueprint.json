@@ -1,0 +1,161 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and role management",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["ADMIN", "MANAGER", "TECHNICIAN", "OWNER"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Vehicle": {
+      "title": "Vehicle",
+      "description": "Vehicle asset details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "make": { "type": "string" },
+        "model": { "type": "string" },
+        "year": { "type": "number" },
+        "vin": { "type": "string" },
+        "plateNumber": { "type": "string" },
+        "currentMileage": { "type": "number" },
+        "lastServiceDate": { "type": "string", "format": "date-time" },
+        "imageURL": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "make", "model", "year", "currentMileage"]
+    },
+    "ServiceRecord": {
+      "title": "Service Record",
+      "description": "Maintenance and repair history",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "vehicleId": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "mileage": { "type": "number" },
+        "type": { "type": "string", "enum": ["MAINTENANCE", "REPAIR", "UPGRADE"] },
+        "description": { "type": "string" },
+        "cost": { "type": "number" },
+        "technicianId": { "type": "string" },
+        "partsUsed": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "partId": { "type": "string" },
+              "quantity": { "type": "number" },
+              "cost": { "type": "number" }
+            }
+          }
+        },
+        "notes": { "type": "string" }
+      },
+      "required": ["vehicleId", "ownerId", "date", "mileage", "type", "cost"]
+    },
+    "Part": {
+      "title": "Part",
+      "description": "Inventory management",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "name": { "type": "string" },
+        "sku": { "type": "string" },
+        "category": { "type": "string" },
+        "quantity": { "type": "number" },
+        "unitCost": { "type": "number" },
+        "minStockLevel": { "type": "number" }
+      },
+      "required": ["ownerId", "name", "quantity", "unitCost"]
+    },
+    "Reminder": {
+      "title": "Reminder",
+      "description": "Scheduled maintenance tasks",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "vehicleId": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "title": { "type": "string" },
+        "dueDate": { "type": "string", "format": "date-time" },
+        "dueMileage": { "type": "number" },
+        "type": { "type": "string" },
+        "status": { "type": "string", "enum": ["PENDING", "COMPLETED", "OVERDUE"] }
+      },
+      "required": ["vehicleId", "ownerId", "title", "status"]
+    },
+    "FuelLog": {
+      "title": "Fuel Log",
+      "description": "Vehicle refueling history",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "vehicleId": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "mileage": { "type": "number" },
+        "gallons": { "type": "number" },
+        "pricePerGallon": { "type": "number" },
+        "totalCost": { "type": "number" },
+        "isFullTank": { "type": "boolean" },
+        "notes": { "type": "string" }
+      },
+      "required": ["vehicleId", "ownerId", "date", "mileage", "gallons", "totalCost"]
+    },
+    "VehicleDocument": {
+      "title": "Vehicle Document",
+      "description": "Important vehicle documents (insurance, registration)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "vehicleId": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "title": { "type": "string" },
+        "type": { "type": "string", "enum": ["INSURANCE", "REGISTRATION", "OTHER"] },
+        "expiryDate": { "type": "string", "format": "date-time" },
+        "fileURL": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["vehicleId", "ownerId", "title", "type"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/vehicles/{vehicleId}": {
+      "schema": "Vehicle",
+      "description": "Vehicle assets"
+    },
+    "/serviceRecords/{recordId}": {
+      "schema": "ServiceRecord",
+      "description": "Global service history"
+    },
+    "/fuelLogs/{logId}": {
+      "schema": "FuelLog",
+      "description": "Vehicle refueling history"
+    },
+    "/documents/{docId}": {
+      "schema": "VehicleDocument",
+      "description": "Vehicle documents"
+    },
+    "/reminders/{reminderId}": {
+      "schema": "Reminder",
+      "description": "Global maintenance reminders"
+    },
+    "/inventory/{partId}": {
+      "schema": "Part",
+      "description": "Parts inventory"
+    }
+  }
+}

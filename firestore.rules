@@ -1,0 +1,235 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() { return request.auth != null; }
+    function userDoc(uid) { return /databases/$(database)/documents/users/$(uid); }
+    
+    // Improved role detection: handles missing user docs or fields gracefully
+    // Note: get() result might be null if doc doesn't exist.
+    // If it exists, it has a 'data' map.
+    function getRole() {
+      return get(userDoc(request.auth.uid)).data.role;
+    }
+
+    function isBootstrappedAdmin() {
+      return request.auth.token.email == 'ali.hasan.microcenter.bh@gmail.com';
+    }
+
+    function isAdmin() { 
+      return isSignedIn() && (isBootstrappedAdmin() || (exists(userDoc(request.auth.uid)) && getRole() == 'ADMIN')); 
+    }
+    
+    function isManager() { 
+      return isAdmin() || (exists(userDoc(request.auth.uid)) && getRole() == 'MANAGER'); 
+    }
+    
+    function isTechnician() { 
+      return isManager() || (exists(userDoc(request.auth.uid)) && getRole() == 'TECHNICIAN'); 
+    }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isValidId(id) { return id is string && id.size() > 0 && id.size() <= 128; }
+    function isOwner(vehicleId) {
+      return get(/databases/$(database)/documents/vehicles/$(vehicleId)).data.ownerId == request.auth.uid;
+    }
+
+    // --- Validation Helpers ---
+    function isValidUser(data) {
+      return data.uid == request.auth.uid &&
+             data.email is string && data.email.size() <= 256 &&
+             data.displayName is string && data.displayName.size() <= 128 &&
+             data.role in ['ADMIN', 'MANAGER', 'TECHNICIAN', 'OWNER'] &&
+             (!data.keys().contains('createdAt') || data.createdAt is string);
+    }
+
+    function isValidVehicle(data) {
+      return data.ownerId is string &&
+             data.make is string && data.make.size() <= 100 &&
+             data.model is string && data.model.size() <= 100 &&
+             data.year is number && data.year >= 1900 && data.year <= 2100 &&
+             data.currentMileage is number && data.currentMileage >= 0 &&
+             (!data.keys().contains('vin') || data.vin is string) &&
+             (!data.keys().contains('createdAt') || data.createdAt is string) &&
+             (!data.keys().contains('updatedAt') || data.updatedAt is string) &&
+             (!data.keys().contains('imageUrl') || data.imageUrl is string);
+    }
+
+    function isValidServiceRecord(data) {
+      return data.vehicleId is string &&
+             data.ownerId is string &&
+             data.cost is number && data.cost >= 0 &&
+             data.mileage is number && data.mileage >= 0 &&
+             data.type in ['MAINTENANCE', 'REPAIR', 'UPGRADE'] &&
+             data.date is string &&
+             (!data.keys().contains('description') || data.description is string) &&
+             (!data.keys().contains('notes') || data.notes is string) &&
+             (!data.keys().contains('createdAt') || data.createdAt is string) &&
+             (!data.keys().contains('updatedAt') || data.updatedAt is string);
+    }
+
+    function isValidPart(data) {
+      return data.name is string && data.name.size() <= 200 &&
+             data.ownerId is string &&
+             data.quantity is number && data.quantity >= 0 &&
+             data.unitCost is number && data.unitCost >= 0 &&
+             (!data.keys().contains('sku') || data.sku is string) &&
+             (!data.keys().contains('category') || data.category is string) &&
+             (!data.keys().contains('location') || data.location is string) &&
+             (!data.keys().contains('minStockLevel') || data.minStockLevel is number) &&
+             (!data.keys().contains('createdAt') || data.createdAt is string) &&
+             (!data.keys().contains('updatedAt') || data.updatedAt is string);
+    }
+
+    function isValidReminder(data) {
+      return data.vehicleId is string &&
+             data.ownerId is string &&
+             data.title is string && data.title.size() <= 200 &&
+             data.dueDate is string &&
+             data.status in ['PENDING', 'COMPLETED', 'OVERDUE'] &&
+             (!data.keys().contains('type') || data.type in ['OIL_CHANGE', 'TIRE_ROTATION', 'INSPECTION', 'REGISTRATION', 'INSURANCE', 'MAINTENANCE', 'OTHER']) &&
+             (!data.keys().contains('description') || data.description is string) &&
+             (!data.keys().contains('createdAt') || data.createdAt is string) &&
+             (!data.keys().contains('updatedAt') || data.updatedAt is string) &&
+             (!data.keys().contains('dueMileage') || data.dueMileage is number) &&
+             (!data.keys().contains('isRepeatable') || data.isRepeatable is bool) &&
+             (!data.keys().contains('repeatMileage') || data.repeatMileage is number) &&
+             (!data.keys().contains('repeatMonths') || data.repeatMonths is number) &&
+             (!data.keys().contains('lastCompletedDate') || data.lastCompletedDate is string) &&
+             (!data.keys().contains('lastCompletedMileage') || data.lastCompletedMileage is number);
+    }
+
+    function isValidFuelLog(data) {
+      return data.vehicleId is string &&
+             data.ownerId is string &&
+             data.date is string &&
+             data.mileage is number && data.mileage >= 0 &&
+             data.gallons is number && data.gallons >= 0 &&
+             data.totalCost is number && data.totalCost >= 0 &&
+             (!data.keys().contains('pricePerGallon') || data.pricePerGallon is number) &&
+             (!data.keys().contains('isFullTank') || data.isFullTank is bool) &&
+             (!data.keys().contains('notes') || data.notes is string) &&
+             (!data.keys().contains('createdAt') || data.createdAt is string) &&
+             (!data.keys().contains('updatedAt') || data.updatedAt is string);
+    }
+
+    function isValidDocument(data) {
+      return data.vehicleId is string &&
+             data.ownerId is string &&
+             data.title is string && data.title.size() <= 200 &&
+             data.type in ['INSURANCE', 'REGISTRATION', 'OTHER'] &&
+             (!data.keys().contains('expiryDate') || data.expiryDate is string) &&
+             (!data.keys().contains('fileURL') || data.fileURL is string) &&
+             (!data.keys().contains('createdAt') || data.createdAt is string) &&
+             (!data.keys().contains('updatedAt') || data.updatedAt is string);
+    }
+
+    // --- Collection Rules ---
+
+    match /users/{userId} {
+      allow read: if isSignedIn() && (userId == request.auth.uid || isManager());
+      allow create: if isSignedIn() && userId == request.auth.uid && isValidUser(incoming()) && incoming().role == 'OWNER';
+      allow update: if isSignedIn() && userId == request.auth.uid && isValidUser(incoming()) && (
+        // Action: Update Profile
+        (incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email', 'avatarUrl']))
+      ) || isAdmin();
+    }
+
+    match /vehicles/{vehicleId} {
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow get: if isSignedIn() && isValidId(vehicleId) && (isTechnician() || resource.data.ownerId == request.auth.uid);
+      
+      allow create: if isSignedIn() && isValidId(vehicleId) && isValidVehicle(incoming()) && (isManager() || incoming().ownerId == request.auth.uid);
+      allow update: if isSignedIn() && isValidId(vehicleId) && isValidVehicle(incoming()) && (
+        isAdmin() || (
+          (isManager() || existing().ownerId == request.auth.uid) && (
+            // Action: Basic Info
+            (incoming().diff(existing()).affectedKeys().hasOnly(['make', 'model', 'year', 'vin', 'updatedAt'])) ||
+            // Action: Odometer
+            (incoming().diff(existing()).affectedKeys().hasOnly(['currentMileage', 'updatedAt'])) ||
+            // Action: Photo
+            (incoming().diff(existing()).affectedKeys().hasOnly(['imageUrl', 'updatedAt']))
+          )
+        )
+      );
+      allow delete: if isAdmin() || (existing().ownerId == request.auth.uid);
+    }
+
+    match /serviceRecords/{recordId} {
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow get: if isSignedIn() && isValidId(recordId) && (isTechnician() || resource.data.ownerId == request.auth.uid);
+      
+      allow create: if isSignedIn() && isValidId(recordId) && isValidServiceRecord(incoming()) && (
+        (isTechnician() && incoming().ownerId == get(/databases/$(database)/documents/vehicles/$(incoming().vehicleId)).data.ownerId) ||
+        (isOwner(incoming().vehicleId) && incoming().ownerId == request.auth.uid)
+      );
+      allow update: if isSignedIn() && isValidId(recordId) && isValidServiceRecord(incoming()) && (
+        isAdmin() || (
+          (isTechnician() || existing().ownerId == request.auth.uid) && (
+            // Action: Generic edit
+            (incoming().diff(existing()).affectedKeys().hasOnly(['description', 'cost', 'mileage', 'type', 'date', 'updatedAt']))
+          )
+        )
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /reminders/{reminderId} {
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow get: if isSignedIn() && isValidId(reminderId) && (isTechnician() || resource.data.ownerId == request.auth.uid);
+      allow create: if isSignedIn() && isValidId(reminderId) && isValidReminder(incoming()) && (isTechnician() || incoming().ownerId == request.auth.uid);
+      allow update: if isSignedIn() && isValidId(reminderId) && isValidReminder(incoming()) && (
+        isAdmin() || (
+          (isTechnician() || existing().ownerId == request.auth.uid) && (
+            // Action: Complete reminder
+            (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt', 'lastCompletedDate', 'lastCompletedMileage'])) ||
+            // Action: Reschedule / Update recurring
+            (incoming().diff(existing()).affectedKeys().hasOnly(['dueDate', 'title', 'description', 'updatedAt', 'isRepeatable', 'repeatMileage', 'repeatMonths', 'dueMileage', 'type']))
+          )
+        )
+      );
+      allow delete: if isSignedIn() && (isTechnician() || existing().ownerId == request.auth.uid);
+    }
+    
+    match /fuelLogs/{logId} {
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow get: if isSignedIn() && isValidId(logId) && (resource.data.ownerId == request.auth.uid);
+      allow create: if isSignedIn() && isValidId(logId) && isValidFuelLog(incoming()) && (incoming().ownerId == request.auth.uid);
+      allow update: if isSignedIn() && isValidId(logId) && isValidFuelLog(incoming()) && (
+        (existing().ownerId == request.auth.uid) && (
+           (incoming().diff(existing()).affectedKeys().hasOnly(['gallons', 'totalCost', 'date', 'mileage', 'notes', 'updatedAt']))
+        )
+      );
+      allow delete: if isSignedIn() && (existing().ownerId == request.auth.uid);
+    }
+    
+    match /documents/{docId} {
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow get: if isSignedIn() && isValidId(docId) && (resource.data.ownerId == request.auth.uid);
+      allow create: if isSignedIn() && isValidId(docId) && isValidDocument(incoming()) && (incoming().ownerId == request.auth.uid);
+      allow update: if isSignedIn() && isValidId(docId) && isValidDocument(incoming()) && (
+        (existing().ownerId == request.auth.uid) && (
+          (incoming().diff(existing()).affectedKeys().hasOnly(['title', 'type', 'expiryDate', 'fileURL', 'updatedAt']))
+        )
+      );
+      allow delete: if isSignedIn() && (existing().ownerId == request.auth.uid);
+    }
+
+    match /inventory/{partId} {
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow get: if isSignedIn() && isValidId(partId) && (resource.data.ownerId == request.auth.uid || isManager());
+      allow create: if isSignedIn() && isValidId(partId) && isValidPart(incoming()) && (incoming().ownerId == request.auth.uid);
+      allow update: if isValidId(partId) && isValidPart(incoming()) && (
+        (existing().ownerId == request.auth.uid && incoming().ownerId == existing().ownerId && (
+           incoming().diff(existing()).affectedKeys().hasOnly(['quantity', 'name', 'unitCost', 'minStockLevel', 'updatedAt'])
+        )) || isAdmin()
+      );
+      allow delete: if isAdmin() || (existing().ownerId == request.auth.uid);
+    }
+  }
+}

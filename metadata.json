@@ -1,0 +1,6 @@
+{
+  "name": "AutoLog",
+  "description": "A personal vehicle management app for track your maintenance history, fuel logs, and service reminders. Keep your cars in peak condition with a simple, individual-focused interface.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
